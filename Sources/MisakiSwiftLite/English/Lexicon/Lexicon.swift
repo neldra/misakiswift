@@ -265,11 +265,26 @@ final class Lexicon {
     }
     
     if let phonemeDict = phoneticString as? [String: String?] {
-      var t = getParentTag(tag, token: w)
-      if let ctx = ctx, ctx.futureVowel == nil, phonemeDict["None"] != nil {
-        t = "XX"
+      // misaki/en.py Lexicon.lookup: "None" (no future vowel), else exact
+      // Penn tag, else parent tag, else DEFAULT.
+      var t: String
+      if let ctx, ctx.futureVowel == nil, phonemeDict.keys.contains("None") {
+        t = "None"
+      } else {
+        t = pennTagForHeteronymLookup(
+          nlTag: tag,
+          token: w,
+          preceding: ctx?.preceding ?? []
+        )
+        if !phonemeDict.keys.contains(t) {
+          t = parentPennTag(t)
+        }
       }
-      phoneticString = phonemeDict[t ?? "DEFAULT"] ?? phonemeDict["DEFAULT"] ?? nil
+      if phonemeDict.keys.contains(t) {
+        phoneticString = phonemeDict[t] ?? nil
+      } else {
+        phoneticString = phonemeDict["DEFAULT"] ?? nil
+      }
     }
     
     if phoneticString == nil || (isNNP == true && !(phoneticString as? String ?? "").contains(Lexicon.primaryStress)) {

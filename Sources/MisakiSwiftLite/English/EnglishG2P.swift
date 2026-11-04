@@ -47,6 +47,17 @@ final public class EnglishG2P {
     self.unk = unk
   }
 
+  /// One (text, tag) entry per word, so `result[..<i]` is everything before word `i`.
+  private func precedingWords(from words: [Any]) -> [(text: String, tag: NLTag?)] {
+    words.map { item in
+      if let token = item as? MToken { return (token.text, token.tag) }
+      if let arr = item as? [MToken], let last = arr.last {
+        return (arr.dropLast().map { $0.text + $0.whitespace }.joined() + last.text, last.tag)
+      }
+      return ("", nil)
+    }
+  }
+
   private func tokenContext(_ ctx: TokenContext, ps: String?, token: MToken) -> TokenContext {
     var vowel = ctx.futureVowel
     
@@ -405,7 +416,9 @@ final public class EnglishG2P {
     let words = retokenize(tokens)
     
     var ctx = TokenContext()
+    let preceding = precedingWords(from: words)
     for i in stride(from: words.count - 1, through: 0, by: -1) {
+      ctx.preceding = preceding[..<i]
       if let w = words[i] as? MToken {
         if w.phonemes == nil {
           let out = lexicon.transcribe(w, ctx: ctx)

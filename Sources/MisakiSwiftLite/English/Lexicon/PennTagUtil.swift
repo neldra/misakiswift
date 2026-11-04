@@ -140,6 +140,86 @@ func pennTag(for nlTag: NLTag, token: String? = nil) -> String {
     }
 }
 
+/// Penn tag used to index a heteronym dictionary. Matches spaCy's PTB tag when
+/// Apple's mapping is enough; refines a bare `VB` from preceding clause words
+/// so irregular past forms (`read`, `wound`) can hit `VBD`/`VBN`.
+func pennTagForHeteronymLookup(
+  nlTag: NLTag?,
+  token: String,
+  preceding: ArraySlice<(text: String, tag: NLTag?)>
+) -> String {
+  guard let nlTag else { return "DEFAULT" }
+  let base = pennTag(for: nlTag, token: token)
+  guard nlTag == .verb, base == "VB" else { return base }
+  return refineBareVerbPennTag(preceding: preceding)
+}
+
+/// Parent class of a PTB tag, matching `Lexicon.get_parent_tag` in misaki/en.py.
+func parentPennTag(_ tag: String) -> String {
+  if tag.hasPrefix("VB") { return "VERB" }
+  if tag.hasPrefix("NN") { return "NOUN" }
+  if tag.hasPrefix("ADV") || tag.hasPrefix("RB") { return "ADV" }
+  if tag.hasPrefix("ADJ") || tag.hasPrefix("JJ") { return "ADJ" }
+  return tag
+}
+
+private let modalAuxiliaries: Set<String> = [
+  "will", "would", "can", "could", "shall", "should", "may", "might", "must", "'ll"
+]
+private let doAuxiliaries: Set<String> = ["do", "does", "did"]
+private let haveBeAuxiliaries: Set<String> = [
+  "have", "has", "had", "having", "'ve", "'d",
+  "am", "is", "are", "was", "were", "be", "been", "being", "'s", "'re", "'m"
+]
+private let skippedAdverbWords: Set<String> = ["not", "never"]
+
+/// Walk left within the clause (punctuation / sentence start stop it), skip
+/// adverbs including "not"/"never", and inspect at most 3 remaining words.
+private func refineBareVerbPennTag(preceding: ArraySlice<(text: String, tag: NLTag?)>) -> String {
+  var examined = 0
+  var sawClauseWord = false
+
+  for (text, tag) in preceding.reversed() {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { continue }
+    if isClauseBoundary(tag: tag, text: trimmed) { break }
+
+    let lower = trimmed.lowercased()
+    if tag == .adverb || skippedAdverbWords.contains(lower) { continue }
+
+    examined += 1
+    if examined > 3 { break }
+    sawClauseWord = true
+
+    if lower == "to"
+        || modalAuxiliaries.contains(lower)
+        || doAuxiliaries.contains(lower)
+        || lower == "let"
+        || lower.hasSuffix("n't")
+        || lower.hasSuffix("n’t") {
+      return "VB"
+    }
+    if haveBeAuxiliaries.contains(lower) {
+      return "VBN"
+    }
+  }
+
+  return sawClauseWord ? "VBD" : "VB"
+}
+
+private func isClauseBoundary(tag: NLTag?, text: String) -> Bool {
+  if let tag {
+    switch tag {
+    case .punctuation, .sentenceTerminator, .otherPunctuation,
+         .openQuote, .closeQuote, .openParenthesis, .closeParenthesis:
+      return true
+    default:
+      break
+    }
+  }
+  return !text.contains(where: { $0.isLetter || $0.isNumber })
+}
+
 func isPersonalPrononun(tag: NLTag, token: String) -> Bool {
   let personalPronouns: Set<String> = [
     "i", "me", "my", "mine", "myself",
