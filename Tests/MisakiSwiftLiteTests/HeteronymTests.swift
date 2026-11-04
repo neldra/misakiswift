@@ -28,6 +28,7 @@ import Testing
         "Read it now.",
         "You should never read it.",
         "Did you read it?",
+        "I want to quickly read it.",
     ])
     func baseRead(_ s: String) {
         let out = ipa(s)
